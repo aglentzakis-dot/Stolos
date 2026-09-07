@@ -138,7 +138,7 @@
 <script type="text/babel">
 const {useState,useEffect,useMemo} = React;
 
-const VERSION = "v2026-09-07.1";
+const VERSION = "v2026-09-07.2";
 const KEY = "stolos_v1";
 
 const KATIGORIES = ["Καλαθοφόρο","Γερανοφόρο (παπαγάλος)","Φορτηγό μεταφοράς μπομπίνων","Ανατρεπόμενο","Φορτηγό με υδραυλικό γερανό","Βαν συνεργείου","Ημιφορτηγό","Φορτηγό έως 3,5 τόνους","Φορτηγό άνω των 3,5 τόνων","Ρυμουλκό / νταλίκα","Ψυγείο","Βυτιοφόρο","Κλούβα","Άλλο"];
@@ -1913,11 +1913,26 @@ function FileTab({db,setDb}){
       <div className="card">
         <h3>Αντίγραφο ασφαλείας</h3>
         <p className="muted" style={{marginTop:0}}>Μάρκαρε όλο το κείμενο και αντίγραψέ το. Κράτα το κάπου ασφαλές (σημειώσεις, μήνυμα στον εαυτό σου).</p>
-        <textarea readOnly value={backup} style={{minHeight:110,fontSize:12}} onFocus={e=>e.target.select()} />
+        <div className="alertbox soon" style={{marginBottom:8}}>
+          Αυτό το αντίγραφο περιέχει: {db.vehicles.length} οχήματα, {db.drivers.length} οδηγούς, {db.trips.length} δρομολόγια,
+          {" "}{(db.fuels||[]).length} ανεφοδιασμούς, {db.services.length} εργασίες.
+          {db.trips.length===0 ? " Είναι άδειο — φόρτωσε πρώτα δεδομένα." : ""}
+        </div>
+        <textarea readOnly id="bk" value={backup} style={{minHeight:110,fontSize:12}} onFocus={e=>e.target.select()} />
         <div className="btnrow">
           <button className="dark" onClick={()=>{
-            try{ navigator.clipboard.writeText(backup); alert("Αντιγράφηκε."); }
-            catch(e){ alert("Δεν έγινε αυτόματη αντιγραφή. Μάρκαρε το κείμενο με το χέρι."); }
+            const el = document.getElementById("bk");
+            if(el){ el.focus(); el.select(); el.setSelectionRange(0, backup.length); }
+            let done = false;
+            try{ done = document.execCommand("copy"); }catch(e){ done = false; }
+            if(done){ alert("Αντιγράφηκε (" + backup.length + " χαρακτήρες). Έλεγξε ότι το επικολλούμενο κείμενο ξεκινά με { και τελειώνει με }."); return; }
+            if(navigator.clipboard && navigator.clipboard.writeText){
+              navigator.clipboard.writeText(backup)
+                .then(function(){ alert("Αντιγράφηκε (" + backup.length + " χαρακτήρες)."); })
+                .catch(function(){ alert("Η αυτόματη αντιγραφή απέτυχε. Το κείμενο είναι ήδη μαρκαρισμένο — κράτα πατημένο πάνω του και διάλεξε «Αντιγραφή»."); });
+              return;
+            }
+            alert("Η αυτόματη αντιγραφή δεν υποστηρίζεται εδώ. Το κείμενο είναι μαρκαρισμένο — κράτα πατημένο και διάλεξε «Αντιγραφή».");
           }}>Αντιγραφή</button>
         </div>
       </div>
@@ -1930,11 +1945,17 @@ function FileTab({db,setDb}){
           <button className="primary" onClick={()=>{
             try{
               const d = JSON.parse(txt);
-              if(!d || !Array.isArray(d.trips)) throw new Error("bad");
-              if(confirm("Θα αντικατασταθούν όλα τα τωρινά δεδομένα. Συνέχεια;")){
-                setDb(Object.assign(emptyDb(), d)); setTxt(""); alert("Έγινε επαναφορά.");
+              if(!d || !Array.isArray(d.trips) || !Array.isArray(d.vehicles)) throw new Error("bad");
+              const nv = d.vehicles.length, nd = (d.drivers||[]).length, nt = d.trips.length, nf = (d.fuels||[]).length;
+              if(nv===0 && nt===0){
+                alert("Το αντίγραφο που επικόλλησες είναι ΑΔΕΙΟ: 0 οχήματα, 0 δρομολόγια.\n\nΗ επαναφορά ακυρώθηκε για να μη σβηστούν τα δεδομένα σου. Ζήτα σωστό αντίγραφο ή πάτησε «Φόρτωση δοκιμαστικών».");
+                return;
               }
-            }catch(e){ alert("Το κείμενο δεν είναι έγκυρο αντίγραφο."); }
+              if(confirm("Το αντίγραφο περιέχει " + nv + " οχήματα, " + nd + " οδηγούς, " + nt + " δρομολόγια, " + nf + " ανεφοδιασμούς.\n\nΘα αντικαταστήσει ΟΛΑ τα τωρινά δεδομένα. Συνέχεια;")){
+                setDb(Object.assign(emptyDb(), d)); setTxt("");
+                alert("Έγινε επαναφορά: " + nv + " οχήματα, " + nt + " δρομολόγια.");
+              }
+            }catch(e){ alert("Το κείμενο δεν είναι έγκυρο αντίγραφο. Πρέπει να ξεκινά με { και να τελειώνει με }. Αν το αντέγραψες κομμένο, ξαναπροσπάθησε."); }
           }}>Επαναφορά</button>
         </div>
       </div>

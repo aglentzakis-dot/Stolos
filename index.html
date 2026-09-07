@@ -138,7 +138,7 @@
 <script type="text/babel">
 const {useState,useEffect,useMemo} = React;
 
-const VERSION = "v2026-09-07.2";
+const VERSION = "v2026-09-07.3";
 const KEY = "stolos_v1";
 
 const KATIGORIES = ["Καλαθοφόρο","Γερανοφόρο (παπαγάλος)","Φορτηγό μεταφοράς μπομπίνων","Ανατρεπόμενο","Φορτηγό με υδραυλικό γερανό","Βαν συνεργείου","Ημιφορτηγό","Φορτηγό έως 3,5 τόνους","Φορτηγό άνω των 3,5 τόνων","Ρυμουλκό / νταλίκα","Ψυγείο","Βυτιοφόρο","Κλούβα","Άλλο"];
@@ -1906,6 +1906,7 @@ function ListManager({title, hint, dbKey, db, setDb, defaults}){
 
 function FileTab({db,setDb}){
   const [txt,setTxt] = useState("");
+  const [msg,setMsg] = useState("");
   const backup = JSON.stringify(db);
   return (
     <div>
@@ -2009,16 +2010,27 @@ function FileTab({db,setDb}){
         </p>
         <div className="btnrow" style={{marginTop:0}}>
           <button className="dark" onClick={()=>{
-            if(db.vehicles.some(v=>v.demo)){ alert("Τα δοκιμαστικά δεδομένα είναι ήδη φορτωμένα."); return; }
-            const dd = demoData();
-            setDb(d=>Object.assign({}, d, {
-              vehicles: d.vehicles.concat(dd.vehicles),
-              drivers: d.drivers.concat(dd.drivers),
-              trips: d.trips.concat(dd.trips),
-              services: d.services.concat(dd.services),
-              fuels: (d.fuels||[]).concat(dd.fuels)
-            }));
-            alert("Φορτώθηκαν 5 φορτηγά, 5 οδηγοί και 28 δρομολόγια.");
+            setMsg("Ξεκίνησε η φόρτωση…");
+            try{
+              if(db.vehicles.some(v=>v.demo)){ setMsg("Τα δοκιμαστικά είναι ήδη φορτωμένα."); return; }
+              const dd = demoData();
+              setMsg("Φτιάχτηκαν " + dd.vehicles.length + " οχήματα, " + dd.drivers.length + " οδηγοί, " + dd.trips.length + " δρομολόγια, " + dd.fuels.length + " ανεφοδιασμοί. Αποθηκεύονται…");
+              setDb(d=>Object.assign({}, d, {
+                vehicles: d.vehicles.concat(dd.vehicles),
+                drivers: d.drivers.concat(dd.drivers),
+                trips: d.trips.concat(dd.trips),
+                services: d.services.concat(dd.services),
+                fuels: (d.fuels||[]).concat(dd.fuels)
+              }));
+              setTimeout(function(){
+                let saved = "άγνωστο";
+                try{ const raw = localStorage.getItem(KEY); saved = raw ? (JSON.parse(raw).vehicles||[]).length + " οχήματα στη μνήμη της συσκευής" : "ΤΙΠΟΤΑ δεν αποθηκεύτηκε"; }
+                catch(e){ saved = "η μνήμη της συσκευής δεν διαβάζεται: " + e.message; }
+                setMsg("Ολοκληρώθηκε. " + saved + ".");
+              }, 400);
+            }catch(err){
+              setMsg("ΣΦΑΛΜΑ: " + (err && err.message ? err.message : String(err)));
+            }
           }}>Φόρτωση δοκιμαστικών</button>
           <button className="danger" onClick={()=>{
             if(!confirm("Θα αφαιρεθούν μόνο τα δοκιμαστικά δεδομένα. Συνέχεια;")) return;
@@ -2031,6 +2043,11 @@ function FileTab({db,setDb}){
             }));
           }}>Αφαίρεση δοκιμαστικών</button>
         </div>
+        <div className="alertbox soon" style={{marginTop:10}}>
+          Τώρα στην εφαρμογή: {db.vehicles.length} οχήματα, {db.drivers.length} οδηγοί, {db.trips.length} δρομολόγια,
+          {" "}{(db.fuels||[]).length} ανεφοδιασμοί, {db.services.length} εργασίες.
+        </div>
+        {msg ? <div className="alertbox" style={{marginTop:8}}>{msg}</div> : null}
       </div>
 
       <div className="card">

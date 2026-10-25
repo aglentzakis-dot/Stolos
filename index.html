@@ -2,6 +2,7 @@
 <html lang="el">
 <head>
 <meta charset="utf-8">
+<script src="plaisio.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#22303c">
 <title>Στόλος</title>
@@ -138,7 +139,30 @@
 <script type="text/babel">
 const {useState,useEffect,useMemo} = React;
 
-const VERSION = "v2026-09-07.4";
+const VERSION = "v2026-10-25.1";
+
+/* Κωδικός διαχειριστή: ΚΑΜΙΑ προεπιλογή, αποθηκεύεται μόνο αλατισμένο αποτύπωμα (PBKDF2).
+   Προσοχή: κρύβει τα εμπιστευτικά στην οθόνη, ΔΕΝ κρυπτογραφεί τα δεδομένα της συσκευής. */
+const PIN_ITER = 210000;
+const b64e = (buf) => btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+const b64d = (s) => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function pinDerive(code, saltB64){
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(String(code)), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits({name:"PBKDF2", salt:b64d(saltB64), iterations:PIN_ITER, hash:"SHA-256"}, base, 256);
+  return b64e(bits);
+}
+async function pinMake(code){
+  const salt = b64e(crypto.getRandomValues(new Uint8Array(16)));
+  return {pinS: salt, pinH: await pinDerive(code, salt), pin: ""};
+}
+/* Παλιός κωδικός σε απλό κείμενο: ισχύει μόνο αν τον είχε αλλάξει ο χρήστης (όχι το 1234). */
+const pinIsSet = (db) => !!(db && (db.pinH || (db.pin && db.pin !== "1234")));
+async function pinOk(db, code){
+  if(!db) return false;
+  if(db.pinH && db.pinS) return (await pinDerive(code, db.pinS)) === db.pinH;
+  if(db.pin && db.pin !== "1234") return code === db.pin;
+  return false;
+}
 const KEY = "stolos_v1";
 
 const KATIGORIES = ["Καλαθοφόρο","Γερανοφόρο (παπαγάλος)","Φορτηγό μεταφοράς μπομπίνων","Ανατρεπόμενο","Φορτηγό με υδραυλικό γερανό","Βαν συνεργείου","Ημιφορτηγό","Φορτηγό έως 3,5 τόνους","Φορτηγό άνω των 3,5 τόνων","Ρυμουλκό / νταλίκα","Ψυγείο","Βυτιοφόρο","Κλούβα","Άλλο"];
@@ -232,7 +256,7 @@ function tripTons(t){
   return 0;
 }
 function tripTonneKm(t){ return tripTons(t) * tripKm(t); }
-function emptyDb(){ return {vehicles:[], drivers:[], trips:[], services:[], places:TOPOI_ARXIKA.slice(), cargos:EMPOREUMATA_ARXIKA.slice(), shops:SYNERGEIA_ARXIKA.slice(), brands:MARKES_ARXIKA.slice(), models:MONTELA_ARXIKA.slice(), fuels:[], stations:PRATIRIA_ARXIKA.slice(), pin:"1234", assum:{years:"8", resid:"20", fuelGain:"15", maintNew:"25", escal:"15"}}; }
+function emptyDb(){ return {vehicles:[], drivers:[], trips:[], services:[], places:TOPOI_ARXIKA.slice(), cargos:EMPOREUMATA_ARXIKA.slice(), shops:SYNERGEIA_ARXIKA.slice(), brands:MARKES_ARXIKA.slice(), models:MONTELA_ARXIKA.slice(), fuels:[], stations:PRATIRIA_ARXIKA.slice(), pin:"", assum:{years:"8", resid:"20", fuelGain:"15", maintNew:"25", escal:"15"}}; }
 function load(){
   try{
     const raw = localStorage.getItem(KEY);
@@ -838,10 +862,11 @@ function FleetTab({db,setDb}){
                   </div>
                   {dr.notes?<div className="muted" style={{marginTop:6}}>{dr.notes}</div>:null}
                   <div className="btnrow" style={{marginTop:8}}>
-                    <button className="small" style={{flex:"0 0 auto",minWidth:0,color:"var(--mute)",padding:"7px 12px"}} title="Εμπιστευτικά" onClick={()=>{
+                    <button className="small" style={{flex:"0 0 auto",minWidth:0,color:"var(--mute)",padding:"7px 12px"}} title="Εμπιστευτικά" onClick={async ()=>{
+                      if(!pinIsSet(db)){ alert("Όρισε πρώτα κωδικό διαχειριστή στις Ρυθμίσεις."); return; }
                       const code = prompt("Κωδικός διαχειριστή:");
                       if(code === null) return;
-                      if(code !== (db.pin || "1234")){ alert("Λάθος κωδικός."); return; }
+                      if(!(await pinOk(db, code))){ alert("Λάθος κωδικός."); return; }
                       setSheet({t:"conf", dr:dr});
                     }}>•••</button>
                     <button className="small" onClick={()=>setSheet({t:"econ", kind:"d", subj:dr})}>Οικονομικά</button>
@@ -2013,19 +2038,23 @@ function FileTab({db,setDb}){
 
       <div className="card">
         <h3>Κωδικός διαχειριστή</h3>
-        <p className="muted" style={{marginTop:0}}>Ξεκλειδώνει τις εμπιστευτικές σημειώσεις και τις αξιολογήσεις των οδηγών. Προεπιλογή 1234.</p>
+        <p className="muted" style={{marginTop:0}}>Ξεκλειδώνει τις εμπιστευτικές σημειώσεις και τις αξιολογήσεις των οδηγών. Δεν υπάρχει προεπιλεγμένος κωδικός· όρισε δικό σου, τουλάχιστον 6 χαρακτήρες.</p>
         <div className="btnrow" style={{marginTop:0}}>
-          <button className="dark" onClick={()=>{
-            const old = prompt("Τρέχων κωδικός:");
-            if(old === null) return;
-            if(old !== (db.pin || "1234")){ alert("Λάθος κωδικός."); return; }
-            const n1 = prompt("Νέος κωδικός:");
+          <button className="dark" onClick={async ()=>{
+            if(pinIsSet(db)){
+              const old = prompt("Τρέχων κωδικός:");
+              if(old === null) return;
+              if(!(await pinOk(db, old))){ alert("Λάθος κωδικός."); return; }
+            }
+            const n1 = prompt("Νέος κωδικός (τουλάχιστον 6 χαρακτήρες):");
             if(!n1) return;
+            if(n1.length < 6 || n1 === "123456" || /^(.)\1+$/.test(n1)){ alert("Ο κωδικός είναι πολύ αδύναμος."); return; }
             const n2 = prompt("Ξαναγράψε τον νέο κωδικό:");
             if(n1 !== n2){ alert("Οι δύο κωδικοί δεν ταιριάζουν."); return; }
-            setDb(d=>Object.assign({},d,{pin:n1}));
-            alert("Ο κωδικός άλλαξε.");
-          }}>Αλλαγή κωδικού</button>
+            const made = await pinMake(n1);
+            setDb(d=>Object.assign({},d,made));
+            alert("Ο κωδικός ορίστηκε.");
+          }}>{pinIsSet(db) ? "Αλλαγή κωδικού" : "Ορισμός κωδικού"}</button>
         </div>
       </div>
 
